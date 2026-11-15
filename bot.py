@@ -382,6 +382,8 @@ P = {
     "purify": 0.10,        # solver actions below this frequency are dropped
     "solve_mode": 0,       # 0 = every river spot, 1 = only when checked to, 2 = only facing a bet
     "cap_exit": -60,       # capped mode switches to fold-only after losing this many chips
+    "lock_z": 1.0,         # early in the match, keep playing while the edge so far is at least this many
+    "lock_late": 0.35,     # standard errors above zero; the lock applies once this share of hands is left
     "n_sim": 6000,           # flop Monte Carlo deals (2500 was enough; more only costs time, ~38 s of 150 s)
 }
 
@@ -743,6 +745,13 @@ class Bot:
         prec = h / (sd * sd) + 1.0 / 144.0                        # prior on the edge: sd 12 chips/hand
         mu = (mean * h / (sd * sd)) / prec
         self.mu_est = mu
+        # Early in the match, with clear evidence of an edge, locking would freeze a small lead
+        # and forfeit most of the tie-break cap; play on and re-check every hand.  Simulated on
+        # match logs: capped chips vs weak aggressive bots rise from ~85 to ~940 of 1000 for
+        # +0.6 pp of match-loss risk against an exactly equal opponent.
+        sd_raw = max(25.0, (max(0.0, self.free_s2 / h - mean * mean)) ** 0.5)
+        if left > P["lock_late"] * self.total_hands and mean / (sd_raw / h ** 0.5) >= P["lock_z"]:
+            return False
         final = self.net + mu * left
         var = sd * sd * left + left * left / prec
         p_win = 0.5 * (1.0 + math.erf(final / (2.0 * var) ** 0.5))
